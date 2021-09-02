@@ -79,12 +79,12 @@ function useListboxContext(component: string) {
 
 export let Listbox = defineComponent({
   name: 'Listbox',
-  emits: { 'update:modelValue': (_value: any) => true },
+  emits: { 'update:modelValue': (_value: any, _added?: any) => true },
   props: {
     as: { type: [Object, String], default: 'template' },
     disabled: { type: [Boolean], default: false },
     horizontal: { type: [Boolean], default: false },
-    modelValue: { type: [Object, String, Number, Boolean] },
+    modelValue: { type: [Array, Object, String, Number, Boolean] },
   },
   setup(props, { slots, attrs, emit }) {
     let listboxState = ref<StateDefinition['listboxState']['value']>(ListboxStates.Closed)
@@ -182,7 +182,18 @@ export let Listbox = defineComponent({
       },
       select(value: unknown) {
         if (props.disabled) return
-        emit('update:modelValue', value)
+
+        const refValue = ref(value)
+
+        if (Array.isArray(api.value.value)) {
+          let newValue: any[] = api.value.value.includes(refValue.value)
+            ? api.value.value.filter(option => option !== refValue.value)
+            : [...api.value.value, refValue.value]
+
+          emit('update:modelValue', newValue, value)
+        } else {
+          emit('update:modelValue', value)
+        }
       },
     }
 
@@ -423,8 +434,10 @@ export let ListboxOptions = defineComponent({
             let { dataRef } = api.options.value[api.activeOptionIndex.value]
             api.select(dataRef.value)
           }
-          api.closeListbox()
-          nextTick(() => dom(api.buttonRef)?.focus({ preventScroll: true }))
+          if (!Array.isArray(api.value.value)) {
+            api.closeListbox()
+            nextTick(() => dom(api.buttonRef)?.focus({ preventScroll: true }))
+          }
           break
 
         case match(api.orientation.value, {
@@ -503,7 +516,11 @@ export let ListboxOption = defineComponent({
         : false
     })
 
-    let selected = computed(() => toRaw(api.value.value) === toRaw(props.value))
+    let selected = computed(() => {
+      return Array.isArray(api.value.value)
+        ? api.value.value.includes(props.value)
+        : toRaw(api.value.value) === toRaw(props.value)
+    })
 
     let dataRef = ref<ListboxOptionDataRef['value']>({
       disabled: props.disabled,
@@ -526,7 +543,9 @@ export let ListboxOption = defineComponent({
         [api.listboxState, selected],
         () => {
           if (api.listboxState.value !== ListboxStates.Open) return
-          if (!selected.value) return
+
+          if ((Array.isArray(selected.value) && !selected.value.length) || !selected.value) return
+
           api.goToOption(Focus.Specific, id)
           document.getElementById(id)?.focus?.()
         },
@@ -543,8 +562,10 @@ export let ListboxOption = defineComponent({
     function handleClick(event: MouseEvent) {
       if (props.disabled) return event.preventDefault()
       api.select(props.value)
-      api.closeListbox()
-      nextTick(() => dom(api.buttonRef)?.focus({ preventScroll: true }))
+      if (!Array.isArray(api.value.value)) {
+        api.closeListbox()
+        nextTick(() => dom(api.buttonRef)?.focus({ preventScroll: true }))
+      }
     }
 
     function handleFocus() {
